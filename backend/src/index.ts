@@ -57,7 +57,7 @@ app.use(
     sameSite: isProduction ? "none" : "lax", 
 
     // Set the Domain Attribute
-    domain: isProduction ? ".onrender.com" : "localhost", 
+    domain: isProduction ? "tiqueon-api.onrender.com" : "localhost", 
   })
 );
 
