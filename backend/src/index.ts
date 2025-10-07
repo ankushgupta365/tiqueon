@@ -27,14 +27,34 @@ app.use(express.json());
 
 app.use(express.urlencoded({ extended: true }));
 
+// app.use(
+//   session({
+//     name: "session",
+//     keys: [config.SESSION_SECRET],
+//     maxAge: 24 * 60 * 60 * 1000,
+//     secure: config.NODE_ENV === "production",
+//     httpOnly: true,
+//     sameSite: "lax",
+//   })
+// );
+
+// Determine if we are in a production/deployed environment
+const isProduction = config.NODE_ENV === "production";
+
 app.use(
   session({
     name: "session",
     keys: [config.SESSION_SECRET],
     maxAge: 24 * 60 * 60 * 1000,
-    secure: config.NODE_ENV === "production",
+    
+    // 1. MUST be true for Render (HTTPS) to send the cookie
+    secure: isProduction, 
+    
     httpOnly: true,
-    sameSite: "lax",
+    
+    // 2. MUST be "none" to allow cross-site requests (Frontend <-> Backend)
+    //    Note: If secure is true, SameSite must be set.
+    sameSite: isProduction ? "none" : "lax", 
   })
 );
 
