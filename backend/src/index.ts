@@ -55,6 +55,9 @@ app.use(
     // 2. MUST be "none" to allow cross-site requests (Frontend <-> Backend)
     //    Note: If secure is true, SameSite must be set.
     sameSite: isProduction ? "none" : "lax", 
+
+    // Set the Domain Attribute
+    domain: isProduction ? ".onrender.com" : "localhost", 
   })
 );
 
@@ -73,7 +76,7 @@ app.get(
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     throw new BadRequestException(
       "This is a bad request",
-      ErrorCodeEnum.INTERNAL_SERVER_ERROR
+      ErrorCodeEnum.INTERNAL_SERVER_ERROR 
     );
     return res.status(HTTPSTATUS.OK).json({
       message: "Tiqueon backend server is running now",
