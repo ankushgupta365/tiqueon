@@ -14,6 +14,7 @@ import {
   EditProjectPayloadType,
   ProjectByIdPayloadType,
   ProjectResponseType,
+  TaskType,
 } from "../types/api.type";
 import {
   AllWorkspaceResponseType,
@@ -24,7 +25,9 @@ import {
   registerType,
   WorkspaceByIdResponseType,
   EditWorkspaceType,
+  FileUploadPayloadType,
 } from "@/types/api.type";
+
 
 export const loginMutationFn = async (
   data: loginType
@@ -205,6 +208,21 @@ export const createTaskMutationFn = async ({
   return response.data;
 };
 
+export const getTaskByIdQueryFn = async ({
+  workspaceId,
+  projectId,
+  taskId,
+}: {
+  workspaceId: string;
+  projectId: string;
+  taskId: string;
+}): Promise<TaskType> => {
+  const response = await API.get(
+    `/task/${taskId}/project/${projectId}/workspace/${workspaceId}`
+  );
+  return response.data.task;
+}
+
 
 export const editTaskMutationFn = async ({
   taskId,
@@ -260,4 +278,31 @@ export const deleteTaskMutationFn = async ({
     `task/${taskId}/workspace/${workspaceId}/delete`
   );
   return response.data;
+};
+
+
+//////////////// FILE UPLOAD  ///////////////////////
+
+export const getPresignedUrlMutationFn = async ({
+  fileName,
+  contentType,
+  workspaceId,
+  projectId,
+  taskId,
+  commentId,
+}: FileUploadPayloadType) => {
+  // Use URLSearchParams for cleaner, safer query string construction
+  const params = new URLSearchParams({
+    fileName,
+    contentType,
+    workspaceId,
+  });
+
+  // Append optional parameters only if they exist
+  if (projectId) params.append("projectId", projectId);
+  if (taskId) params.append("taskId", taskId);
+  if (commentId) params.append("commentId", commentId);
+
+  const response = await API.get(`/file/presigned-url?${params.toString()}`);
+  return response.data; // This is expected to be { url: string, fileKey: string }
 };

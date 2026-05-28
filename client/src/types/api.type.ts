@@ -239,6 +239,7 @@ export type EditTaskPayloadType = {
     status: TaskStatusEnumType;
     assignedTo: string;
     dueDate: string;
+    project: string;
   }>;
 };
 
@@ -246,7 +247,8 @@ export type EditTaskPayloadType = {
 export type TaskType = {
   _id: string;
   title: string;
-  description?: string;
+  description: string;
+  files: string[];
   project?: {
     _id: string;
     emoji: string;
@@ -262,8 +264,8 @@ export type TaskType = {
   createdBy?: string;
   dueDate: string;
   taskCode: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AllTaskPayloadType = {
@@ -282,4 +284,27 @@ export type AllTaskResponseType = {
   message: string;
   tasks: TaskType[];
   pagination: PaginationType;
+};
+
+
+
+//********** FILE TYPES ************************
+//*****************************************
+
+
+
+export type FileUploadPayloadType = {
+  fileName: string;
+  contentType: string;
+  workspaceId: string;
+  projectId: string;
+  taskId?: string;
+  commentId?: string;
+};
+
+export type useFileUploadProps = {
+  workspaceId: string;
+  projectId: string;
+  taskId?: string;
+  commentId?: string;
 };

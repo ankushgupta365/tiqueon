@@ -1,4 +1,5 @@
-import { TaskPriorityEnum, TaskStatusEnum } from "../enums/task.enum";
+import { TaskPriorityEnum, TaskStatusEnum, TaskTypeEnum } from "../enums/task.enum";
+import FileModel from "../models/file.model";
 import MemberModel from "../models/member.model";
 import ProjectModel from "../models/project.model";
 import TaskModel from "../models/task.model";
@@ -11,13 +12,15 @@ export const createTaskService = async (
   body: {
     title: string;
     description?: string;
+    files: object[];
     priority: string;
+    type: string;
     status: string;
     assignedTo?: string | null;
     dueDate?: string;
   }
 ) => {
-  const { title, description, priority, status, assignedTo, dueDate } = body;
+  const { title, description, files, priority,type ,status, assignedTo, dueDate } = body;
 
   const project = await ProjectModel.findById(projectId);
 
@@ -36,10 +39,19 @@ export const createTaskService = async (
       throw new Error("Assigned user is not a member of this workspace.");
     }
   }
+
+  //save files to file modal here and get their ids
+  const fileIds = await Promise.all(files.map(async (file)=>{
+    const savedFile = await FileModel.create({...file, uploadedBy: userId, workspace: workspaceId});
+    return savedFile._id;
+  }))
+
   const task = new TaskModel({
     title,
+    files: fileIds,
     description,
     priority: priority || TaskPriorityEnum.MEDIUM,
+    type: type || TaskTypeEnum.SERVICE_REQUEST,
     status: status || TaskStatusEnum.TODO,
     assignedTo,
     createdBy: userId,
@@ -58,14 +70,16 @@ export const updateTaskService = async (
   projectId: string,
   taskId: string,
   body: {
-    title: string;
+    title?: string;
     description?: string;
-    priority: string;
-    status: string;
+    priority?: string;
+    status?: string;
     assignedTo?: string | null;
     dueDate?: string;
+    project?: string;
   }
 ) => {
+  console.log(body);
   const project = await ProjectModel.findById(projectId);
 
   if (!project || project.workspace.toString() !== workspaceId.toString()) {
@@ -187,7 +201,7 @@ export const getTaskByIdService = async (
     _id: taskId,
     workspace: workspaceId,
     project: projectId,
-  }).populate("assignedTo", "_id name profilePicture -password");
+  }).populate("assignedTo", "_id name profilePicture -password").populate("files");
 
   if (!task) {
     throw new NotFoundException("Task not found.");

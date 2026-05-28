@@ -19,50 +19,19 @@ import workspaceRoutes from "./routes/workspace.route";
 import memberRoutes from "./routes/member.route";
 import projectRoutes from "./routes/project.route";
 import taskRoutes from "./routes/task.route";
+import fileRoutes from "./routes/file.route";
+// import timelogsRoutes from "./routes/timelogs.route";
 
 const app = express();
 const BASE_PATH = config.BASE_PATH;
 
+if (config.NODE_ENV === 'production') {
+  app.set('trust proxy', true); // Trust the first proxy (Render/Vercel)
+}
+
 app.use(express.json());
 
 app.use(express.urlencoded({ extended: true }));
-
-// app.use(
-//   session({
-//     name: "session",
-//     keys: [config.SESSION_SECRET],
-//     maxAge: 24 * 60 * 60 * 1000,
-//     secure: config.NODE_ENV === "production",
-//     httpOnly: true,
-//     sameSite: "lax",
-//   })
-// );
-
-// Determine if we are in a production/deployed environment
-const isProduction = config.NODE_ENV === "production";
-
-app.use(
-  session({
-    name: "session",
-    keys: [config.SESSION_SECRET],
-    maxAge: 24 * 60 * 60 * 1000,
-    
-    // 1. MUST be true for Render (HTTPS) to send the cookie
-    secure: isProduction, 
-    
-    httpOnly: true,
-    
-    // 2. MUST be "none" to allow cross-site requests (Frontend <-> Backend)
-    //    Note: If secure is true, SameSite must be set.
-    sameSite: isProduction ? "none" : "lax", 
-
-    // Set the Domain Attribute
-    domain: isProduction ? "tiqueon-api.onrender.com" : "localhost", 
-  })
-);
-
-app.use(passport.initialize());
-app.use(passport.session());
 
 app.use(
   cors({
@@ -71,15 +40,31 @@ app.use(
   })
 );
 
+app.use(
+  session({
+    name: "session-tiqueon-cookie-1",
+    keys: [config.SESSION_SECRET],
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: config.NODE_ENV == 'production',
+    httpOnly: true,
+    sameSite: config.NODE_ENV == 'production' ? 'none': 'lax',
+    secureProxy: config.NODE_ENV == 'production'
+  })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+
 app.get(
   `/`,
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     throw new BadRequestException(
       "This is a bad request",
-      ErrorCodeEnum.INTERNAL_SERVER_ERROR 
+      ErrorCodeEnum.AUTH_INVALID_TOKEN
     );
     return res.status(HTTPSTATUS.OK).json({
-      message: "Tiqueon backend server is running now",
+      message: "API is running",
     });
   })
 );
@@ -90,6 +75,8 @@ app.use(`${BASE_PATH}/workspace`, isAuthenticated, workspaceRoutes);
 app.use(`${BASE_PATH}/member`, isAuthenticated, memberRoutes);
 app.use(`${BASE_PATH}/project`, isAuthenticated, projectRoutes);
 app.use(`${BASE_PATH}/task`, isAuthenticated, taskRoutes);
+app.use(`${BASE_PATH}/file`, isAuthenticated, fileRoutes);
+// app.use(`${BASE_PATH}/timelogs`, isAuthenticated, timelogsRoutes)
 
 app.use(errorHandler);
 

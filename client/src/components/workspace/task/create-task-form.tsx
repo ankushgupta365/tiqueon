@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "../../ui/textarea";
+// import { Textarea } from "../../ui/textarea";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -33,25 +33,51 @@ import {
   getAvatarFallbackText,
   transformOptions,
 } from "@/lib/helper";
+import { useFileUpload } from "@/hooks/user-file-upload";
 import useWorkspaceId from "@/hooks/use-workspace-id";
-import { TaskPriorityEnum, TaskStatusEnum } from "@/constant";
+import { TaskPriorityEnum, TaskStatusEnum, TaskTypeEnum } from "@/constant";
 import useGetProjectsInWorkspaceQuery from "@/hooks/api/use-get-projects";
 import useGetWorkspaceMembers from "@/hooks/api/use-get-workspace-members";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { createTaskMutationFn } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import RichTextEditor from "@/components/RichTextEditor";
+import { useRef} from "react";
+
+//rich text editor interface, upload files
+interface UploadedFile {
+  file: File | undefined;
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  url?: string;
+  thumbnailUrl?: string;
+}
+
+interface RichTextEditorRef {
+  getContent: () => string;
+  getFiles: () => UploadedFile[];
+  clear: () => void;
+}
 
 export default function CreateTaskForm(props: {
   projectId?: string;
   onClose: () => void;
 }) {
   const { projectId, onClose } = props;
+  const editorRef = useRef<RichTextEditorRef | null>(null);
 
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceId();
 
-  const { mutate, isPending } = useMutation({
+  const { uploadFiles, isUploading } = useFileUpload({
+    workspaceId,
+    projectId: projectId || "", // Pass the project ID from props
+  });
+
+  const { mutate: createTask, isPending: isCreatingTask } = useMutation({
     mutationFn: createTaskMutationFn,
   });
 
@@ -64,6 +90,7 @@ export default function CreateTaskForm(props: {
 
   const projects = data?.projects || [];
   const members = memberData?.members || [];
+
 
   //Workspace Projects
   const projectOptions = projects?.map((project) => {
@@ -102,7 +129,10 @@ export default function CreateTaskForm(props: {
     title: z.string().trim().min(1, {
       message: "Title is required",
     }),
-    description: z.string().trim(),
+    description: z.string().min(1, {
+      message: "Description is required",
+    }),
+    files: z.array(z.any()).optional(),
     projectId: z.string().trim().min(1, {
       message: "Project is required",
     }),
@@ -116,6 +146,12 @@ export default function CreateTaskForm(props: {
       Object.values(TaskPriorityEnum) as [keyof typeof TaskPriorityEnum],
       {
         required_error: "Priority is required",
+      }
+    ),
+    type: z.enum(
+      Object.values(TaskTypeEnum) as [keyof typeof TaskTypeEnum],
+      {
+        required_error: "Task type is required",
       }
     ),
     assignedTo: z.string().trim().min(1, {
@@ -137,47 +173,83 @@ export default function CreateTaskForm(props: {
 
   const taskStatusList = Object.values(TaskStatusEnum);
   const taskPriorityList = Object.values(TaskPriorityEnum); // ["LOW", "MEDIUM", "HIGH", "URGENT"]
+  const taskTypeList = Object.values(TaskTypeEnum); // ["BUG", "FEATURE", "DOCUMENTATION", "SERVICE_REQUEST"]
+
 
   const statusOptions = transformOptions(taskStatusList);
   const priorityOptions = transformOptions(taskPriorityList);
+  const typeOptions = transformOptions(taskTypeList);
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    if (isPending) return;
-    const payload = {
-      workspaceId,
-      projectId: values.projectId,
-      data: {
-        ...values,
-        dueDate: values.dueDate.toISOString(),
-      },
-    };
+  const onSubmit = async(values: z.infer<typeof formSchema>) => {
+    const isProcessing = isCreatingTask || isUploading;
+    if (isProcessing) return;
 
-    mutate(payload, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: ["project-analytics", projectId],
-        });
+    try {
+      // 1. Get raw File objects from the editor
+      const rawEditorFiles = editorRef.current?.getFiles() || [];
+      const filesToUpload = rawEditorFiles
+        .map((f) => f.file)
+        .filter((f): f is File => f !== undefined);
 
-        queryClient.invalidateQueries({
-          queryKey: ["all-tasks", workspaceId],
-        });
+      let uploadedAttachments : any = [];
 
-        toast({
-          title: "Success",
-          description: "Task created successfully",
-          variant: "success",
-        });
-        onClose();
-      },
-      onError: (error) => {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
-      },
-    });
+      // 2. Upload files if they exist. `uploadFiles` handles all the complexity.
+      if (filesToUpload.length > 0) {
+        toast({ title: "Uploading attachments..." });
+        const uploadResults = await uploadFiles(filesToUpload);
+
+        // 3. Map the results to the format your backend needs for the task's `files` array
+        uploadedAttachments = uploadResults.map((res) => ({
+          filename: res.originalName,
+          fileUrl: res.url,
+          fileType: res.type,
+          fileSize: res.size,
+          project: values.projectId,
+          workspace: workspaceId,
+          initial:  true
+        }));
+      }
+
+      // 4. Construct the final payload for task creation
+      const payload = {
+        workspaceId,
+        projectId: values.projectId,
+        data: {
+          ...values,
+          files: uploadedAttachments, // ✅ Use the array of successfully uploaded file URLs
+          dueDate: values.dueDate.toISOString(),
+        },
+      };
+
+      // 5. Mutate to create the task
+      createTask(payload, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["all-tasks", workspaceId] });
+          toast({
+            title: "Success",
+            description: "Task created successfully",
+            variant: "success",
+          });
+          onClose();
+        },
+        onError: (error) => {
+          toast({
+            title: "Task Creation Failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        },
+      });
+    } catch (error) {
+      // This will catch errors from the `uploadFiles` function if it fails.
+      // The user will have already been notified by the toast inside the hook.
+      console.error("Task submission process failed:", error);
+    }
   };
+
+  // ✅ Combined loading state for the submit button
+  const isPending = isCreatingTask || isUploading;
+
 
   return (
     <div className="w-full h-auto max-w-full">
@@ -222,20 +294,24 @@ export default function CreateTaskForm(props: {
               <FormField
                 control={form.control}
                 name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="dark:text-[#f1f7feb5] text-sm">
-                      Task description
-                      <span className="text-xs font-extralight ml-2">
-                        Optional
-                      </span>
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea rows={1} placeholder="Description" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const { ref: fieldRef, ...restOfField } = field;
+                  return (
+                    <FormItem>
+                      <FormLabel className="dark:text-[#f1f7feb5] text-sm">
+                        Task description
+                      </FormLabel>
+                      <FormControl>
+                        {/* <Textarea rows={1} placeholder="Description" {...field} /> */}
+                        <RichTextEditor placeholder="Add your description"  {...restOfField} ref={(instance) => {
+                          fieldRef(instance); // 1. Pass instance to react-hook-form
+                          editorRef.current = instance; // 2. Set your own ref
+                        }} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
             </div>
 
@@ -365,7 +441,7 @@ export default function CreateTaskForm(props: {
                           disabled={
                             (date) =>
                               date <
-                                new Date(new Date().setHours(0, 0, 0, 0)) || // Disable past dates
+                              new Date(new Date().setHours(0, 0, 0, 0)) || // Disable past dates
                               date > new Date("2100-12-31") //Prevent selection beyond a far future date
                           }
                           initialFocus
@@ -444,6 +520,41 @@ export default function CreateTaskForm(props: {
                             value={priority.value}
                           >
                             {priority.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* {type} */}
+            <div>
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Task Type</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select task type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {typeOptions?.map((type) => (
+                          <SelectItem
+                            className="!capitalize"
+                            key={type.value}
+                            value={type.value}
+                          >
+                            {type.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

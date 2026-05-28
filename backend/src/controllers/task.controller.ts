@@ -23,7 +23,7 @@ export const createTaskController = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user?._id;
 
-    const body = createTaskSchema.parse(req.body);
+    // const body = createTaskSchema.parse(req.body);
     const projectId = projectIdSchema.parse(req.params.projectId);
     const workspaceId = workspaceIdSchema.parse(req.params.workspaceId);
 
@@ -34,7 +34,7 @@ export const createTaskController = asyncHandler(
       workspaceId,
       projectId,
       userId,
-      body
+      req.body
     );
 
     return res.status(HTTPSTATUS.OK).json({
@@ -42,6 +42,15 @@ export const createTaskController = asyncHandler(
       task,
     });
   }
+  // async (req: Request, res: Response) => {
+  //   console.log(req.body)
+  //   console.log(req.body.files)
+  //   console.log(req.params)
+  //   return res.status(HTTPSTATUS.OK).json({
+  //     message: "Task created successfully",
+  //     task: null,
+  //   });
+  // }
 );
 
 export const updateTaskController = asyncHandler(
